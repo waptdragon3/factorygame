@@ -1,0 +1,7 @@
+Graphics:
+    ☐ Impliment factorio-like rendering scheme for tiles: https://www.reddit.com/r/Unity2D/comments/thc442/how_do_games_like_factorio_and_rimworld_display/
+
+Logic:
+    ☐ entities
+    ☐ rhai scripting for modding
+    
