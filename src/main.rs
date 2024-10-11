@@ -1,44 +1,31 @@
-use notan::{draw::{CreateDraw, DrawConfig}, prelude::*};
+use core::f32;
 
-use notan::math::{Mat3, Vec2};
-use tile::TileManager;
-
-mod tile;
-mod chunk;
-mod entity;
-mod worldgen;
+use graphics::GraphicsData;
+use notan::{draw::DrawConfig, prelude::*};
+use prototype::{EntityManager, PrototypeManager};
+use world::{tile::TileManager, ChunkCoord, Surface};
 
 mod graphics;
+mod world;
+
+mod prototype;
 
 
 enum Task{
-    GenChunk((i32,i32)),
+    GenChunk(ChunkCoord),
     RemoveEntity(u32),
-    PlaceEntity(u32, entity::Entity),
+    PlaceEntity(u32, world::entity::Entity),
 
 }
 
-
-
-
-struct Surface {
-    chunks: Vec<chunk::Chunk>,
-    entities: Vec<entity::Entity>,
-    generator: Box<dyn worldgen::Generator>
+struct UpdateData {
+    pub update_time: f32,
 }
-
-impl Surface {
-    fn new<T>(generator: T) -> Surface
-    where T: worldgen::Generator + 'static {
-        Surface {
-            chunks: vec![],
-            entities: vec![],
-            generator: Box::new(generator)
+impl UpdateData {
+    pub fn new() -> Self {
+        Self {
+            update_time: 0.0,
         }
-    }
-    fn gen_chunk(&mut self, coord: (i32, i32), tileman: &TileManager) {
-        let chunk = self.generator.gen_chunk(coord, tileman);
-        self.chunks.push(chunk);
     }
 }
 
@@ -55,37 +42,44 @@ struct Options {
 }
 
 
-
 #[derive(AppState)]
 struct State {
-    update_time: f32,
+    tileman: TileManager,
+    protoman: PrototypeManager,
+    entityman: EntityManager,
+    //recipeman: RecipeManager,
+    //scriptman: ScriptManager,
+
     surface: Surface,
     
-    player_movement: (i8, i8),
-    
-    zoom: f32,
-    camera_position: Vec2,
-    window_size: (u32, u32),
-    pub options: Options,
+    options: Options,
+    graphicsdata: GraphicsData,
+    updatedata: UpdateData,
 
-    tileman: tile::TileManager
+    tasks: Vec<Task>,
 }
+
 
 impl State {
     fn new(_gfx: &mut Graphics) -> Self {
         Self {
-            update_time: 0.,
+            tileman: world::tile::TileManager::new(),
+            protoman: PrototypeManager::new(),
+            entityman: EntityManager::new(),
+
+            surface: world::Surface::new(world::worldgen::LabGen{}),
             
-            surface: Surface::new(worldgen::LabGen{}),
-
-            player_movement: (0,0),
-
-            zoom: 25.,
-            camera_position: Vec2::default(),
-            window_size: (0,0),
+            
             options: Options::default(),
-            tileman: tile::TileManager::new()
+            graphicsdata: GraphicsData::new(),
+            updatedata: UpdateData::new(),
+
+            tasks: vec![]
         }
+    }
+
+    fn add_task(&mut self, task: Task) {
+        self.tasks.push(task);
     }
 }
 
@@ -113,14 +107,16 @@ fn setup(gfx: &mut Graphics) -> State {
     state.tileman.register_tile("grass", r"assets\grass.jpg", gfx);
     state.tileman.register_tile("grass1", r"assets\grass1.jpg", gfx);
 
-    let size = 4;
+    let size = 30;
 
     for x in -size..size {
         for y in -size..size {
-            state.surface.gen_chunk((x,y), &state.tileman);
+            state.add_task(Task::GenChunk(ChunkCoord::new(x,y)));
         }
     }
 
+    
+    //state.add_task(Task::GenChunk(ChunkCoord::new(0, 0)));
     println!("{} chunks", state.surface.chunks.len());
     
     return state;
@@ -135,93 +131,66 @@ fn init(_state: &mut State) {
 
 
 
-fn draw(gfx: &mut Graphics, state: &mut State) {
-    let mut draw = gfx.create_draw();
-    draw.clear(Color::BLACK);
+fn draw(assets: &mut Assets, gfx: &mut Graphics, state: &mut State) {
 
     
+    graphics::render_surface(gfx, &state.surface, &mut state.graphicsdata);
 
-    draw.transform().push(Mat3::from_translation(-state.camera_position * state.zoom));
-    draw.transform().push(Mat3::from_translation(Vec2::new(state.window_size.0 as f32, state.window_size.1 as f32) * 0.5));
-    
-    for chunk in &mut state.surface.chunks {
-        chunk.update_texture(gfx);
-    }
+    //render UI
 
-    for chunk in &state.surface.chunks {
-        chunk::draw_chunk(&mut draw, &state, chunk);
-    }
-    
-
-
-    gfx.render(&draw);
 
 }
 
-const MOVE_SPEED: f32 = 8.0;
-const DT: f32 = 1./60.;
 
 fn update(app: &mut App, state: &mut State) {
 
-    state.update_time += app.timer.delta_f32();
-    state.window_size = app.window().size();
-
+    state.updatedata.update_time += app.timer.delta_f32();
+    let tmpsize = app.window().size();
+    state.graphicsdata.window_size = (tmpsize.0 as f32, tmpsize.1 as f32);
     
-    handle_input(app, state);
+    const MAX_TASKS: i32 = 1000;
+    for _ in 0..MAX_TASKS {
+        let task = state.tasks.pop();
+        if let Some(task) = task {
+            handle_task(task, state);
+        }
+
+        else { break; }
+    }
+
 
     // update each 300ms
-    if state.update_time >= 0.016 {
-        state.update_time = 0.0;
+    if state.updatedata.update_time >= 0.016 {
+        state.updatedata.update_time = 0.0;
     }
     else {
         return;
     }
 
+    let speed = 0.5;
+    let rad = 2.0;
 
-    handle_movement(state);
+    state.surface.camera_pos.x = (app.timer.elapsed().as_secs_f32() * speed * f32::consts::PI).cos() * rad;
+    state.surface.camera_pos.y = (app.timer.elapsed().as_secs_f32() * speed * f32::consts::PI).sin() * rad;
+    //state.surface.camera_pos.x = app.timer.elapsed().as_secs_f32() * rad;
+
 
 
     for chunk in &mut state.surface.chunks {
         chunk.update();
     }
-}
 
-fn handle_input(app: &mut App, state: &mut State) {
-    
-    state.player_movement = (0,0);
-
-    if app.keyboard.is_down(KeyCode::W) {
-        state.player_movement.1 = -1;
-    }
-
-    if app.keyboard.is_down(KeyCode::A) {
-        state.player_movement.0 = -1;
-    }
-
-    if app.keyboard.is_down(KeyCode::S) {
-        state.player_movement.1 += 1;
-    }
-
-    if app.keyboard.is_down(KeyCode::D) {
-        state.player_movement.0 += 1;
-    }
-
-    if app.mouse.is_scrolling() {
-        let delta_y = app.mouse.wheel_delta.y * app.timer.delta_f32() * 10.;
-
-        state.zoom = (state.zoom + delta_y).max(10.).min(50.);
-    }
-
-    if app.keyboard.was_released(KeyCode::F) {
-        state.options.debugsettings.chunk_border = !state.options.debugsettings.chunk_border;
-    }
 
 }
 
-fn handle_movement(state: &mut State) {
 
-    let movement = state.player_movement;
-    state.camera_position.x += MOVE_SPEED * DT * movement.0 as f32;
-    state.camera_position.y += MOVE_SPEED * DT * movement.1 as f32;
-
+fn handle_task(task: Task, state: &mut State) {
+    match task {
+        Task::GenChunk(position) => {
+            println!("Generating chunk {:?}", position);
+            state.surface.gen_chunk(position, &state.tileman);
+        },
+        Task::RemoveEntity(_) => todo!(),
+        Task::PlaceEntity(_, _entity) => todo!(),
+    }
 }

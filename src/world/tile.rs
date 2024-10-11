@@ -1,6 +1,6 @@
 use notan::app::{Graphics, Texture};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Tile {
     pub name: String,
     pub texture: Texture,
