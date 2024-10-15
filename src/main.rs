@@ -107,7 +107,7 @@ fn setup(gfx: &mut Graphics) -> State {
     state.tileman.register_tile("grass", r"assets\grass.jpg", gfx);
     state.tileman.register_tile("grass1", r"assets\grass1.jpg", gfx);
 
-    let size = 30;
+    let size = 10;
 
     for x in -size..size {
         for y in -size..size {
@@ -167,12 +167,12 @@ fn update(app: &mut App, state: &mut State) {
         return;
     }
 
-    let speed = 0.5;
-    let rad = 2.0;
+    let speed = 0.25;
+    let rad = 20.0;
 
-    state.surface.camera_pos.x = (app.timer.elapsed().as_secs_f32() * speed * f32::consts::PI).cos() * rad;
-    state.surface.camera_pos.y = (app.timer.elapsed().as_secs_f32() * speed * f32::consts::PI).sin() * rad;
-    //state.surface.camera_pos.x = app.timer.elapsed().as_secs_f32() * rad;
+    //state.surface.camera_pos.x = (app.timer.elapsed().as_secs_f32() * speed * f32::consts::PI).cos() * rad;
+    //state.surface.camera_pos.y = (app.timer.elapsed().as_secs_f32() * speed * f32::consts::PI).sin() * rad;
+    state.surface.camera_pos.x = app.timer.elapsed().as_secs_f32() * rad;
 
 
 

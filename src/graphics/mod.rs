@@ -92,132 +92,128 @@ impl SignedCeil for f32 {
     }
 }
 
+const EXTRASIZE: f32 = 2.0;
+const WINDOWSIZE: f32 = 1.0;
 
-
-pub fn render_surface(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsData) {
-
-    let extrasize = 4.0;
-
-
-    //min zoom = 10, max zoom = 100
-    let scale = 30.0;
-    let buffersize = (graphicsdata.window_size.0 + extrasize*scale, graphicsdata.window_size.1 + extrasize*scale);
+fn update_tile_buffer(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsData, scale: f32) {
+    let buffersize = (graphicsdata.window_size.0 + EXTRASIZE*scale, graphicsdata.window_size.1 + EXTRASIZE*scale);
     let dpos = surface.camera_pos - graphicsdata.prev_cam_pos;
 
-    if dpos.x.abs() > 5.0 || dpos.y.abs() > 5.0 {
+    if dpos.x.abs() > 1.0 || dpos.y.abs() > 1.0 {
         graphicsdata.tilebuffer = None;
         println!("refresh: {dpos:?}");
         graphicsdata.prev_cam_pos = surface.camera_pos;
     }
-    
 
-    if let Some(tex) = &graphicsdata.tilebuffer {       
-
-        let rtex = gfx.create_render_texture(buffersize.0 as u32, buffersize.1 as u32).build().unwrap();
-        let mut tdraw =  rtex.create_draw();
-        tdraw.clear(Color::RED);
-
-        if dpos.x.abs() >= 1.0 || dpos.y.abs() >= 1.0 {
-            println!("MOVED!");
-
-            graphicsdata.prev_cam_pos = surface.camera_pos;
-
-            tdraw.image(tex)
-            .position(-dpos.x * scale, -dpos.y * scale)
-            .size(tex.width(), tex.height());
-
-            let center = surface.camera_pos;
-
-            let x0 = center.x - (graphicsdata.window_size.0 * 0.5 / scale);
-            let x1 = center.x + (graphicsdata.window_size.0 * 0.5 / scale);
-            let y0 = center.y - (graphicsdata.window_size.1 * 0.5 / scale);
-            let y1 = center.y + (graphicsdata.window_size.1 * 0.5 / scale);
-
-            println!("({x0},{y0}) - ({x1},{y1})");
-
-
-            //TODO: render new tiles
-
-            let mut dx: f32 = 0.0;
-            while dx.abs() < dpos.x.abs() {
-                println!("Rendering tile x: {dx}");
-
-                dx += dpos.x.signum();
-            }
-
-            let mut dy: f32 = 0.0;
-            while dy.abs() < dpos.y.abs() {
-                println!("Rendering tile y: {dy}");
-
-                dy += dpos.y.signum();
-            }
-
-
-
-        
-            gfx.render_to(&rtex, &tdraw);
-        
-            graphicsdata.tilebuffer = Some(rtex.texture().clone());
-
-        }
-
+    if let Some(tex) = &graphicsdata.tilebuffer {
+        refresh_tile_buffer(gfx, surface, graphicsdata, &tex.clone(), buffersize, dpos, scale);
     }
     else {
+        redraw_tile_buffer(gfx, surface, graphicsdata, buffersize, scale);
+    }
+}
 
-        let rtex = gfx.create_render_texture(buffersize.0 as u32, buffersize.1 as u32).build().unwrap();
-        let mut tdraw =  rtex.create_draw();
+fn refresh_tile_buffer(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsData, tex: &Texture, buffersize: (f32, f32), dpos: Coordinate, scale: f32) {
 
-        tdraw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * 0.5));
+    let rtex = gfx.create_render_texture(buffersize.0 as u32, buffersize.1 as u32).build().unwrap();
+    let mut tdraw =  rtex.create_draw();
+    tdraw.clear(Color::RED);
+
+    if dpos.x.abs() >= 1.0 || dpos.y.abs() >= 1.0 {
+        //println!("MOVED!");
+
+        let dpos = surface.camera_pos - graphicsdata.prev_cam_pos;
+        graphicsdata.prev_cam_pos = surface.camera_pos;
+
+        tdraw.image(tex)
+        .position(-dpos.x * scale, -dpos.y * scale)
+        .size(tex.width(), tex.height());
 
         let center = surface.camera_pos;
 
-        let x0 = (center.x - extrasize - (graphicsdata.window_size.0 * 0.5 / scale)).signed_ceil() as i32;
-        let x1 = (center.x + extrasize + (graphicsdata.window_size.0 * 0.5 / scale)).signed_ceil() as i32;
-        let y0 = (center.y - extrasize - (graphicsdata.window_size.1 * 0.5 / scale)).signed_ceil() as i32;
-        let y1 = (center.y + extrasize + (graphicsdata.window_size.1 * 0.5 / scale)).signed_ceil() as i32;
+        let x0 = center.x - (graphicsdata.window_size.0 * 0.5 / scale);
+        let x1 = center.x + (graphicsdata.window_size.0 * 0.5 / scale);
+        let y0 = center.y - (graphicsdata.window_size.1 * 0.5 / scale);
+        let y1 = center.y + (graphicsdata.window_size.1 * 0.5 / scale);
 
         //println!("({x0},{y0}) - ({x1},{y1})");
-        
-        for x in x0..x1 {
-            for y in y0..y1 {
-                let t = surface.get_tile(TileCoord::new(x, y));
 
-                if let Some(tile) = t {
-                    let dpos = Coordinate::new(x as f32+extrasize*0.5, y as f32+extrasize*0.5) - graphicsdata.prev_cam_pos;
-                    let tcoord = (dpos.x * scale, dpos.y * scale);
+        //TODO: render new tiles
 
-                    tdraw.image(&tile.texture)
-                    .position(tcoord.0, tcoord.1)
-                    .size(scale, scale);
-                }
-            }
+        let mut dx: f32 = 0.0;
+        while dx.abs() < dpos.x.abs() {
+            //println!("Rendering tile x: {dx}");
+
+            dx += dpos.x.signum();
+        }
+
+        let mut dy: f32 = 0.0;
+        while dy.abs() < dpos.y.abs() {
+            //println!("Rendering tile y: {dy}");
+
+            dy += dpos.y.signum();
         }
 
         gfx.render_to(&rtex, &tdraw);
-
-        //let _ = rtex.to_file(gfx, "test.png");
-
+    
         graphicsdata.tilebuffer = Some(rtex.texture().clone());
-        graphicsdata.prev_cam_pos = surface.camera_pos;
 
     }
-    let windowsize = 0.9;
+}
 
+fn redraw_tile_buffer(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsData, buffersize: (f32, f32), scale: f32) {
+    
+    let rtex = gfx.create_render_texture(buffersize.0 as u32, buffersize.1 as u32).build().unwrap();
+    let mut tdraw =  rtex.create_draw();
+
+    tdraw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * 0.5));
+
+    let center = surface.camera_pos;
+
+    let x0 = (center.x - EXTRASIZE - (graphicsdata.window_size.0 * 0.5 / scale)).signed_ceil() as i32;
+    let x1 = (center.x + EXTRASIZE + (graphicsdata.window_size.0 * 0.5 / scale)).signed_ceil() as i32;
+    let y0 = (center.y - EXTRASIZE - (graphicsdata.window_size.1 * 0.5 / scale)).signed_ceil() as i32;
+    let y1 = (center.y + EXTRASIZE + (graphicsdata.window_size.1 * 0.5 / scale)).signed_ceil() as i32;
+
+    //println!("({x0},{y0}) - ({x1},{y1})");
+    
+    for x in x0..x1 {
+        for y in y0..y1 {
+            let t = surface.get_tile(TileCoord::new(x, y));
+
+            if let Some(tile) = t {
+                let dpos = Coordinate::new(x as f32+EXTRASIZE*0.5, y as f32+EXTRASIZE*0.5) - graphicsdata.prev_cam_pos;
+                let tcoord = (dpos.x * scale, dpos.y * scale);
+
+                tdraw.image(&tile.texture)
+                .position(tcoord.0, tcoord.1)
+                .size(scale, scale);
+            }
+        }
+    }
+
+    gfx.render_to(&rtex, &tdraw);
+
+    //let _ = rtex.to_file(gfx, "test.png");
+
+    graphicsdata.tilebuffer = Some(rtex.texture().clone());
+    graphicsdata.prev_cam_pos = surface.camera_pos;
+
+}
+
+fn draw_tiles(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsData, scale: f32) {
     let mut draw = gfx.create_draw();
     draw.clear(Color::BLACK);
-
-    draw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * 0.5));
-    draw.transform().push(Mat3::from_scale(Vec2::new(1.0, 1.0) * windowsize));
-
-    draw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * -0.5));
-    
     let offset = graphicsdata.prev_cam_pos - surface.camera_pos;
 
-
+    draw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * 0.5));
+    draw.transform().push(Mat3::from_scale(Vec2::new(1.0, 1.0) * WINDOWSIZE));
+    draw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * -0.5));
+    
     draw.image(&graphicsdata.tilebuffer.clone().unwrap())
-    .position(scale * (-extrasize*0.5 +offset.x), scale * (-extrasize*0.5 +offset.y));
+    .position(scale * (-EXTRASIZE*0.5 +offset.x), scale * (-EXTRASIZE*0.5 +offset.y));
 
-    if windowsize < 1.0 {
+    if WINDOWSIZE < 1.0 {
         draw.rect((0.0, 0.0), graphicsdata.window_size)
         .color(Color::BLUE)
         .stroke(4.0);
@@ -226,13 +222,21 @@ pub fn render_surface(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut 
         draw.circle(10.0)
         .color(Color::RED)
         .position(graphicsdata.window_size.0 * 0.5 + offset.x*scale, graphicsdata.window_size.1 * 0.5 + offset.y*scale);
-
-        
-
     }
-    //draw.transform().clear();
 
-    let convert = ScreenWorldConverter {cam_pos: graphicsdata.prev_cam_pos, window_size: graphicsdata.window_size, scale: scale, offset: offset};
+    gfx.render(&draw);
+}
+
+fn draw_entities(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsData, scale: f32) {
+
+    let mut draw = gfx.create_draw();
+    let offset = graphicsdata.prev_cam_pos - surface.camera_pos;
+
+    draw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * 0.5));
+    draw.transform().push(Mat3::from_scale(Vec2::new(1.0, 1.0) * WINDOWSIZE));
+    draw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * -0.5));
+
+    let convert = ScreenWorldConverter {cam_pos: graphicsdata.prev_cam_pos, window_size: graphicsdata.window_size, scale, offset};
 
     let dotpos = convert.from_world(Coordinate::new(0.0, 0.0));
     draw.circle(5.0)
@@ -249,11 +253,58 @@ pub fn render_surface(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut 
     .color(Color::GREEN)
     .position(dotpos.x, dotpos.y);
 
-    
-    draw.rect(convert.from_world(Coordinate::new(5.0, 5.0)).into(), (3.0*scale,3.0*scale))
+    let recpos = convert.from_world(Coordinate::new(5.0, 5.0));
+    draw.rect(recpos.into(), (3.0*scale,3.0*scale))
     .fill_color(Color::GREEN);
+
+    for x in -5..5 {
+        for y in -5..5 {
+            let dotpos = convert.from_world(Coordinate::new(x as f32, y as f32));
+            draw.circle(2.0)
+            .color(Color::BLACK)
+            .position(dotpos.x, dotpos.y);
+        }
+    }
+
+
+    gfx.render(&draw);
+}
+
+fn draw_grid(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsData, scale: f32) {
+    let mut draw = gfx.create_draw();
+    
+    let offset = graphicsdata.prev_cam_pos - surface.camera_pos;
+
+    draw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * 0.5));
+    draw.transform().push(Mat3::from_scale(Vec2::new(1.0, 1.0) * WINDOWSIZE));
+    draw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * -0.5));
+
+    let center = surface.camera_pos;
+
+    let x0 = (center.x - (graphicsdata.window_size.0 * 0.5 / scale)) as i32;
+    let x1 = (center.x + (graphicsdata.window_size.0 * 0.5 / scale)) as i32;
+    let y0 = (center.y - (graphicsdata.window_size.1 * 0.5 / scale)) as i32;
+    let y1 = (center.y + (graphicsdata.window_size.1 * 0.5 / scale)) as i32;
+
+    for x in x0..x1 {
+        let p1 = ();
+    }
 
 
 
     gfx.render(&draw);
+}
+
+
+
+pub fn render_surface(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsData) {
+
+    //min zoom = 10, max zoom = 100
+    let scale = 10.0;
+    update_tile_buffer(gfx, surface, graphicsdata, scale);
+
+    draw_tiles(gfx, surface, graphicsdata, scale);
+    draw_entities(gfx, surface, graphicsdata, scale);
+
+    draw_grid(gfx, surface, graphicsdata, scale);
 }
