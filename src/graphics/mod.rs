@@ -1,24 +1,28 @@
 use notan::{app::{Color, Graphics, Texture}, draw::{CreateDraw, DrawImages, DrawShapes}, math::{Mat3, Vec2}};
 
-use crate::world::{Coordinate, Surface, TileCoord};
+use crate::world::{chunk, ChunkCoord, Coordinate, Surface};
 
-
+#[derive(Debug, Clone, Default)]
 pub struct GraphicsData {    
     tilebuffer: Option<Texture>,
+    #[allow(dead_code)]
     buffer_size: (f32, f32),
     pub window_size: (f32, f32),
     pub prev_cam_pos: Coordinate,
     pub zoom: f32,
+    refreshpos: Coordinate,
 }
 
 impl GraphicsData {
+    #[allow(dead_code)]
     pub fn new () -> Self {
         Self {
             tilebuffer: None,
             buffer_size: (0.0, 0.0),
             window_size: (0.0, 0.0),
             prev_cam_pos: Coordinate::new(0.0, 0.0),
-            zoom: 1.0
+            zoom: 1.0,
+            refreshpos: Coordinate::new(0.0, 0.0)
         }
     }
 }
@@ -55,12 +59,13 @@ struct ScreenWorldConverter {
 }
 
 impl ScreenWorldConverter {
+    #[allow(dead_code)]
     fn from_world(&self, coord: Coordinate) -> ScreenCoord {
         let dpos = coord - self.cam_pos + self.offset;
         let s = (dpos.x * self.scale, dpos.y * self.scale);
         return ScreenCoord::new(s.0 + self.window_size.0 * 0.5, self.window_size.1 * 0.5 + s.1);
     }
-
+    #[allow(dead_code)]
     fn from_screen(&self, coord: ScreenCoord) -> Coordinate {
         let screen_pos = (coord.x - self.window_size.0 * 0.5, coord.y - self.window_size.1 * 0.5);
         let pos = (screen_pos.0 / self.scale, screen_pos.1 / self.scale);
@@ -98,8 +103,9 @@ const WINDOWSIZE: f32 = 1.0;
 fn update_tile_buffer(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsData, scale: f32) {
     let buffersize = (graphicsdata.window_size.0 + EXTRASIZE*scale, graphicsdata.window_size.1 + EXTRASIZE*scale);
     let dpos = surface.camera_pos - graphicsdata.prev_cam_pos;
+    let dpos2 = surface.camera_pos - graphicsdata.refreshpos;
 
-    if dpos.x.abs() > 1.0 || dpos.y.abs() > 1.0 {
+    if dpos.x.abs() > 10.0 || dpos.y.abs() > 10.0 || dpos2.x.abs() > 10.0 || dpos2.y.abs() > 10.0 {
         graphicsdata.tilebuffer = None;
         println!("refresh: {dpos:?}");
         graphicsdata.prev_cam_pos = surface.camera_pos;
@@ -120,7 +126,7 @@ fn refresh_tile_buffer(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut
     tdraw.clear(Color::RED);
 
     if dpos.x.abs() >= 1.0 || dpos.y.abs() >= 1.0 {
-        //println!("MOVED!");
+        println!("MOVED!");
 
         let dpos = surface.camera_pos - graphicsdata.prev_cam_pos;
         graphicsdata.prev_cam_pos = surface.camera_pos;
@@ -136,7 +142,7 @@ fn refresh_tile_buffer(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut
         let y0 = center.y - (graphicsdata.window_size.1 * 0.5 / scale);
         let y1 = center.y + (graphicsdata.window_size.1 * 0.5 / scale);
 
-        //println!("({x0},{y0}) - ({x1},{y1})");
+        println!("({x0},{y0}) - ({x1},{y1})");
 
         //TODO: render new tiles
 
@@ -166,6 +172,9 @@ fn redraw_tile_buffer(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut 
     let rtex = gfx.create_render_texture(buffersize.0 as u32, buffersize.1 as u32).build().unwrap();
     let mut tdraw =  rtex.create_draw();
 
+    graphicsdata.refreshpos = surface.camera_pos;
+    println!("refresh");
+
     tdraw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * 0.5));
 
     let center = surface.camera_pos;
@@ -177,17 +186,29 @@ fn redraw_tile_buffer(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut 
 
     //println!("({x0},{y0}) - ({x1},{y1})");
     
-    for x in x0..x1 {
-        for y in y0..y1 {
-            let t = surface.get_tile(TileCoord::new(x, y));
+    let c0: ChunkCoord = Coordinate::new(x0 as f32, y0 as f32).into();
+    let c1: ChunkCoord = Coordinate::new(x1 as f32, y1 as f32).into();
 
-            if let Some(tile) = t {
-                let dpos = Coordinate::new(x as f32+EXTRASIZE*0.5, y as f32+EXTRASIZE*0.5) - graphicsdata.prev_cam_pos;
-                let tcoord = (dpos.x * scale, dpos.y * scale);
-
-                tdraw.image(&tile.texture)
-                .position(tcoord.0, tcoord.1)
-                .size(scale, scale);
+    for x in c0.x .. c1.x+1 {
+        for y in c0.y .. c1.y+1 {
+            let c = surface.get_chunk(ChunkCoord::new(x, y));
+            if let Some(chunk) = c {
+                for tx in 0..chunk::CHUNK_SIZE as i32 {
+                    for ty in 0..chunk::CHUNK_SIZE as i32 {
+                        let tile = &chunk.tiles[(tx * chunk::CHUNK_SIZE as i32 + ty) as usize];
+                        let abspos = Coordinate::new((x * chunk::CHUNK_SIZE as i32 + tx) as f32, (y * chunk::CHUNK_SIZE as i32 + ty) as f32);
+                        let relpos = abspos - graphicsdata.prev_cam_pos;
+                        let tcoord = (relpos.x * scale, relpos.y * scale);
+                        if  tcoord.0 - scale > buffersize.0/2.0 || tcoord.0 + scale < -buffersize.0/2.0 ||
+                        tcoord.1 - scale > buffersize.1/2.0 || tcoord.1 + scale < -buffersize.1/2.0 {
+                            continue;
+                        }
+                        
+                        tdraw.image(&tile.texture)
+                        .position(tcoord.0, tcoord.1)
+                        .size(scale, scale);
+                    }
+                }
             }
         }
     }
@@ -270,10 +291,11 @@ fn draw_entities(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut Graph
     gfx.render(&draw);
 }
 
+
 fn draw_grid(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsData, scale: f32) {
     let mut draw = gfx.create_draw();
     
-    let offset = graphicsdata.prev_cam_pos - surface.camera_pos;
+    let _offset = graphicsdata.prev_cam_pos - surface.camera_pos;
 
     draw.transform().push(Mat3::from_translation(Vec2::new(graphicsdata.window_size.0, graphicsdata.window_size.1) * 0.5));
     draw.transform().push(Mat3::from_scale(Vec2::new(1.0, 1.0) * WINDOWSIZE));
@@ -283,11 +305,11 @@ fn draw_grid(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsD
 
     let x0 = (center.x - (graphicsdata.window_size.0 * 0.5 / scale)) as i32;
     let x1 = (center.x + (graphicsdata.window_size.0 * 0.5 / scale)) as i32;
-    let y0 = (center.y - (graphicsdata.window_size.1 * 0.5 / scale)) as i32;
-    let y1 = (center.y + (graphicsdata.window_size.1 * 0.5 / scale)) as i32;
+    let _y0 = (center.y - (graphicsdata.window_size.1 * 0.5 / scale)) as i32;
+    let _y1 = (center.y + (graphicsdata.window_size.1 * 0.5 / scale)) as i32;
 
-    for x in x0..x1 {
-        let p1 = ();
+    for _x in x0..x1 {
+        
     }
 
 

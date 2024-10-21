@@ -6,13 +6,13 @@ pub mod worldgen;
 pub mod tile;
 
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct ChunkCoord { pub x: i32, pub y: i32 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct TileCoord { pub x: i32, pub y: i32 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub struct Coordinate { pub x: f32, pub y: f32 }
 
 impl ChunkCoord {
@@ -118,6 +118,7 @@ impl Surface {
         None
     }
 
+    #[allow(dead_code)]
     pub fn get_tile(&self, coord: TileCoord) -> Option<tile::Tile> {
         let chunk = self.get_chunk(coord.into());
 

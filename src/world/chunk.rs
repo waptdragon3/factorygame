@@ -24,7 +24,7 @@ impl Chunk {
     pub fn update(&mut self) {
         
     }
-
+    #[allow(dead_code)]
     pub fn get_tile(&self, coord: TileCoord) -> Result<Tile, ()> {
         if coord.x < 0 || coord.x > (CHUNK_SIZE-1) as i32 ||
             coord.y < 0 || coord.y > (CHUNK_SIZE-1) as i32 {

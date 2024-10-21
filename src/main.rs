@@ -1,4 +1,5 @@
 use core::f32;
+use std::time::Instant;
 
 use graphics::GraphicsData;
 use notan::{draw::DrawConfig, prelude::*};
@@ -43,6 +44,7 @@ struct Options {
 
 
 #[derive(AppState)]
+#[allow(dead_code)]
 struct State {
     tileman: TileManager,
     protoman: PrototypeManager,
@@ -71,7 +73,7 @@ impl State {
             
             
             options: Options::default(),
-            graphicsdata: GraphicsData::new(),
+            graphicsdata: GraphicsData::default(),
             updatedata: UpdateData::new(),
 
             tasks: vec![]
@@ -131,14 +133,17 @@ fn init(_state: &mut State) {
 
 
 
-fn draw(assets: &mut Assets, gfx: &mut Graphics, state: &mut State) {
-
+fn draw(_app: &mut App, _assets: &mut Assets, gfx: &mut Graphics, state: &mut State) {
     
+    let before = Instant::now();
+   
     graphics::render_surface(gfx, &state.surface, &mut state.graphicsdata);
 
+
+    println!("time: {}us", before.elapsed().as_micros());
     //render UI
 
-
+    //println!("fps: {}", app.timer.fps());
 }
 
 
@@ -167,12 +172,12 @@ fn update(app: &mut App, state: &mut State) {
         return;
     }
 
-    let speed = 0.25;
-    let rad = 20.0;
+    let speed = 0.125;
+    let rad = 11.0;
 
-    //state.surface.camera_pos.x = (app.timer.elapsed().as_secs_f32() * speed * f32::consts::PI).cos() * rad;
-    //state.surface.camera_pos.y = (app.timer.elapsed().as_secs_f32() * speed * f32::consts::PI).sin() * rad;
-    state.surface.camera_pos.x = app.timer.elapsed().as_secs_f32() * rad;
+    state.surface.camera_pos.x = (app.timer.elapsed().as_secs_f32() * speed * f32::consts::PI).cos() * rad;
+    state.surface.camera_pos.y = (app.timer.elapsed().as_secs_f32() * speed * f32::consts::PI).sin() * rad;
+    //state.surface.camera_pos.x = app.timer.elapsed().as_secs_f32() * rad;
 
 
 
