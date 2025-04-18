@@ -98,14 +98,17 @@ impl SignedCeil for f32 {
 }
 
 const EXTRASIZE: f32 = 2.0;
-const WINDOWSIZE: f32 = 1.0;
+const WINDOWSIZE: f32 = 0.75;
 
 fn update_tile_buffer(gfx: &mut Graphics, surface: &Surface, graphicsdata: &mut GraphicsData, scale: f32) {
     let buffersize = (graphicsdata.window_size.0 + EXTRASIZE*scale, graphicsdata.window_size.1 + EXTRASIZE*scale);
     let dpos = surface.camera_pos - graphicsdata.prev_cam_pos;
     let dpos2 = surface.camera_pos - graphicsdata.refreshpos;
 
-    if dpos.x.abs() > 10.0 || dpos.y.abs() > 10.0 || dpos2.x.abs() > 10.0 || dpos2.y.abs() > 10.0 {
+    let dst = 10.0;
+
+
+    if dpos.x.abs() > dst || dpos.y.abs() > dst || dpos2.x.abs() > dst || dpos2.y.abs() > dst {
         graphicsdata.tilebuffer = None;
         println!("refresh: {dpos:?}");
         graphicsdata.prev_cam_pos = surface.camera_pos;
